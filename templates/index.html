@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HMB Surf Dashboard</title>
+  <meta property="og:title" content="HMB Surf Dashboard" />
+  <meta property="og:description" content="Live wave, wind & surf forecast for Half Moon Bay" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ocean:  #0a2540;
+      --deep:   #061829;
+      --wave:   #0e7490;
+      --foam:   #e0f2fe;
+      --gold:   #f59e0b;
+      --coral:  #f97316;
+      --text:   #ffffff;
+      --muted:  #ffffff;
+      --card:   rgba(14,36,60,0.85);
+      --border: rgba(14,116,144,0.25);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--deep);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 120% 60% at 10% 80%, rgba(14,116,144,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 80% 50% at 85% 20%, rgba(10,37,64,0.9) 0%, transparent 70%),
+        linear-gradient(165deg, #061829 0%, #0a2540 45%, #061c30 100%);
+      z-index: 0;
+    }
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      opacity: 0.4; z-index: 0; pointer-events: none;
+    }
+
+    .wrapper { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 0 1.5rem 3rem; }
+
+    /* -- header -- */
+    header {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      padding: 2.5rem 0 1.5rem; border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; gap: 1rem;
+    }
+    .site-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2.8rem, 7vw, 5rem);
+      letter-spacing: 0.04em; line-height: 1; color: #ffffff;
+      text-shadow: 0 0 40px rgba(14,116,144,0.5);
+    }
+    .site-title a {
+      color: #ffffff; text-decoration: none;
+    }
+    .site-title a:hover { text-decoration: underline; }
+    .site-title .ai-green {
+      color: rgb(0, 255, 0);
+    }
+    .site-subtitle {
+      font-family: 'DM Mono', monospace; font-size: 0.85rem;
+      color: #ffffff; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 0.3rem;
+    }
+    .header-meta {
+      text-align: right; font-family: 'DM Mono', monospace;
+      font-size: 0.85rem; color: #ffffff; letter-spacing: 0.05em;
+    }
+    .header-meta #last-updated { color: var(--foam); }
+
+    .refresh-btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      margin-top: 0.5rem; padding: 0.35rem 0.8rem;
+      border: 1px solid var(--wave); border-radius: 4px;
+      background: transparent; color: var(--wave);
+      font-family: 'DM Mono', monospace; font-size: 0.75rem;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .refresh-btn:hover { background: var(--wave); color: var(--deep); }
+    .refresh-btn.spinning svg { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* -- stat grid -- */
+    .current-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem; margin: 2rem 0;
+    }
+
+    .stat-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.2rem 1.4rem;
+      backdrop-filter: blur(8px); position: relative;
+      overflow: hidden; transition: border-color 0.2s;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 2px; background: linear-gradient(90deg, var(--wave), transparent);
+    }
+    .stat-card:hover { border-color: var(--wave); }
+
+    .stat-label {
+      font-family: 'DM Mono', monospace; font-size: 0.85rem;
+      letter-spacing: 0.15em; text-transform: uppercase;
+      color: #ffffff; margin-bottom: 0.5rem;
+    }
+    .stat-value {
+      font-family: 'Bebas Neue', sans-serif; font-size: 3rem;
+      line-height: 1; color: #ffffff;
+    }
+    .stat-unit {
+      font-family: 'DM Mono', monospace; font-size: 0.75rem;
+      color: var(--wave); margin-left: 0.2rem;
+    }
+    .stat-sub {
+      font-family: 'DM Mono', monospace; font-size: 0.8rem;
+      color: #ffffff; margin-top: 0.3rem;
+    }
+    .stat-value.good  { color: #4ade80; }
+    .stat-value.fair  { color: var(--gold); }
+    .stat-value.rough { color: var(--coral); }
+
+    /* -- panels -- */
+    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+    @media (max-width: 750px) {
+      .panels { grid-template-columns: 1fr; }
+      .current-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .panel {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; backdrop-filter: blur(8px); overflow: hidden;
+    }
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--border);
+      background: rgba(14,116,144,0.08);
+    }
+    .panel-title {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem;
+      letter-spacing: 0.12em; color: var(--foam);
+    }
+    .panel-badge {
+      font-family: 'DM Mono', monospace; font-size: 0.7rem;
+      letter-spacing: 0.1em; color: #ffffff;
+      background: rgba(14,116,144,0.15); padding: 0.2rem 0.5rem; border-radius: 3px;
+    }
+
+    /* -- data table -- */
+    .data-table { width: 100%; border-collapse: collapse; font-family: 'DM Mono', monospace; font-size: 0.82rem; }
+    .data-table th {
+      padding: 0.5rem 0.8rem; color: #ffffff; font-weight: 500;
+      text-align: right; font-size: 0.8rem; letter-spacing: 0.1em;
+      text-transform: uppercase; border-bottom: 1px solid var(--border);
+    }
+    .data-table th:first-child { text-align: left; }
+    .data-table td { padding: 0.55rem 0.8rem; text-align: right; border-bottom: 1px solid rgba(14,116,144,0.08); color: #ffffff; }
+    .data-table td:first-child { text-align: left; color: #ffffff; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: rgba(14,116,144,0.07); }
+    .val-hi  { color: #4ade80 !important; }
+    .val-med { color: var(--gold) !important; }
+    .val-lo  { color: #ffffff !important; }
+
+    /* -- tide panel -- */
+    .tide-panel { margin-top: 1.5rem; }
+
+    .tide-canvas-wrap {
+      padding: 1rem 1.2rem 0.5rem;
+      position: relative;
+    }
+
+    #tide-canvas {
+      width: 100%;
+      height: 160px;
+      display: block;
+    }
+
+    .tide-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0.5rem;
+      padding: 0.8rem 1.2rem 1.2rem;
+    }
+
+    .tide-stat {
+      text-align: center;
+    }
+    .tide-stat-label {
+      font-family: 'DM Mono', monospace; font-size: 0.62rem;
+      letter-spacing: 0.12em; text-transform: uppercase; color: #ffffff;
+    }
+    .tide-stat-value {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem;
+      color: #ffffff; line-height: 1.1;
+    }
+    .tide-stat-sub {
+      font-family: 'DM Mono', monospace; font-size: 0.65rem; color: #ffffff;
+    }
+
+    /* -- video embed -- */
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      padding-top: 56.25%; /* 16:9 */
+      background: #000;
+      border-radius: 0 0 8px 8px;
+    }
+    .video-wrap video {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .video-label {
+      padding: 0.5rem 1.2rem;
+      font-family: 'DM Mono', monospace; font-size: 0.72rem;
+      color: #ffffff; letter-spacing: 0.08em;
+      border-top: 1px solid var(--border);
+    }
+    .video-label a { color: var(--wave); text-decoration: none; }
+    .video-label a:hover { color: var(--foam); }
+
+    /* -- forecast panel -- */
+    .forecast-link {
+      display: block; padding: 0.7rem 1.2rem; border-top: 1px solid var(--border);
+      font-family: 'DM Mono', monospace; font-size: 0.75rem;
+      color: var(--wave); text-decoration: none; letter-spacing: 0.05em;
+    }
+    .forecast-link:hover { color: var(--foam); }
+
+    .error-msg { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--coral); padding: 1rem 1.2rem; }
+
+    .status-dot {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: #4ade80; margin-right: 0.4rem; animation: pulse-dot 2s ease infinite;
+    }
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .status-dot.error { background: var(--coral); animation: none; }
+
+    footer {
+      margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border);
+      font-family: 'DM Mono', monospace; font-size: 0.72rem; color: #ffffff;
+      display: flex; gap: 2rem; flex-wrap: wrap;
+    }
+    footer a { color: var(--wave); text-decoration: none; }
+    footer a:hover { color: var(--foam); }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- -- Header -- -->
+  <header>
+    <div>
+      <div class="site-title">HMB SURF - by <a href="https://chaiseai.com/" target="_blank">ch<span class="ai-green">AI</span>se</a></div>
+      <div class="site-subtitle">
+        <span class="status-dot" id="status-dot"></span>
+        SF Buoy 46026 · KHAF Wind · Pillar Point Tides
+      </div>
+    </div>
+    <div class="header-meta">
+      <div>LAST UPDATED <span id="last-updated">—</span></div>
+      <div style="margin-top:0.2rem">NEXT REFRESH IN <span id="next-refresh">—</span></div>
+      <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        Refresh Now
+      </button>
+    </div>
+  </header>
+
+  <!-- -- Current Conditions - Wave row -- -->
+  <div style="margin-top:2rem;">
+    <div style="font-family:'DM Mono',monospace;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--wave);margin-bottom:0.6rem;">
+      ▸ Wave Conditions · Buoy 46026
+    </div>
+    <div class="current-grid">
+      <div class="stat-card">
+        <div class="stat-label">Wave Height</div>
+        <div class="stat-value" id="cur-wvht">—<span class="stat-unit">ft</span></div>
+        <div class="stat-sub" id="cur-wvht-m">— m</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Dominant Period</div>
+        <div class="stat-value" id="cur-dpd">—<span class="stat-unit">s</span></div>
+        <div class="stat-sub" id="cur-apd">avg: — s</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Wave Direction</div>
+        <div class="stat-value" id="cur-mwd">—<span class="stat-unit">°</span></div>
+        <div class="stat-sub" id="cur-mwd-card">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- -- Current Conditions - Wind row -- -->
+  <div style="margin-top:1rem;">
+    <div style="font-family:'DM Mono',monospace;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--wave);margin-bottom:0.6rem;">
+      ▸ Wind Conditions · KHAF
+    </div>
+    <div class="current-grid">
+      <div class="stat-card">
+        <div class="stat-label">Wind Speed</div>
+        <div class="stat-value" id="cur-wspd">—<span class="stat-unit">kt</span></div>
+        <div class="stat-sub" id="cur-wspd-mph">— mph</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Wind Direction</div>
+        <div class="stat-value" id="cur-wdir">—<span class="stat-unit">°</span></div>
+        <div class="stat-sub" id="cur-wdir-card">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Wind Gust</div>
+        <div class="stat-value" id="cur-wgst">—<span class="stat-unit">kt</span></div>
+        <div class="stat-sub" id="cur-wgst-mph">— mph</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- -- Wave + Wind history tables -- -->
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Wave History – 3 hrs</span>
+        <span class="panel-badge"> BUOY 46026 · SF </span>
+      </div>
+      <div id="wave-table-wrap"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Wind History – 2 hrs</span>
+        <span class="panel-badge">KHAF · HALF MOON BAY</span>
+      </div>
+      <div id="wind-table-wrap"></div>
+    </div>
+  </div>
+
+  <!-- -- Tide Panel -- -->
+  <div class="tide-panel">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Tides – Pillar Point Harbor</span>
+        <span class="panel-badge" id="tide-badge">NOAA · 9414131</span>
+      </div>
+      <div class="tide-canvas-wrap">
+        <canvas id="tide-canvas"></canvas>
+      </div>
+      <div class="tide-stats" id="tide-stats"></div>
+    </div>
+  </div>
+
+  <!-- -- Live Cam - Mavericks -- -->
+  <div style="margin-top:1.5rem;">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Live Cam – Mavericks</span>
+        <span class="panel-badge">SURFLINE</span>
+      </div>
+      <div class="video-wrap">
+        <video id="live-cam" muted playsinline autoplay></video>
+      </div>
+      <div class="video-label">
+        <a href="https://www.surfline.com/surf-report/mavericks/5842041f4e65fad6a7708a65" target="_blank">
+          ↗ View on Surfline
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- -- Surf Forecast -- -->
+  <div style="margin-top:1.5rem;">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">North California Surf Forecast</span>
+        <span class="panel-badge" id="forecast-badge">DAILY · STORMSURF</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="min-width:600px;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Day</th>
+              <th style="text-align:left;">Trend</th>
+              <th style="text-align:left;">Wind</th>
+              <th style="text-align:left;">Details</th>
+              <th style="text-align:left;">Waves</th>
+              <th style="text-align:left;">Swell Dir</th>
+            </tr>
+          </thead>
+          <tbody id="forecast-tbody">
+            <tr><td colspan="6" style="padding:1rem;">Loading forecast...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <a class="forecast-link" href="https://www.stormsurf.com/page2/forecast/shortcast/ncal.html" target="_blank" rel="noopener">
+        ↗ View full forecast on Stormsurf
+      </a>
+    </div>
+  </div>
+
+  <footer>
+    <span>Sources:
+      <a href="https://www.ndbc.noaa.gov/station_page.php?station=46026" target="_blank">NDBC 46026</a> ·
+      <a href="https://www.weather.gov/wrh/timeseries?site=KHAF" target="_blank">NWS KHAF</a> ·
+      <a href="https://tidesandcurrents.noaa.gov/stationhome.html?id=9414131" target="_blank">NOAA Tides 9414131</a> ·
+      <a href="https://www.stormsurf.com/page2/forecast/shortcast/ncal.html" target="_blank">Stormsurf</a>
+    </span>
+    <span>Auto-updates every 5 minutes -- <a href="https://chaiseai.com/" target="_blank">ch<span style="color:rgb(0,255,0)">AI</span>se</a> LLC</span>
+  </footer>
+
+</div>
+
+<!-- HLS.js for Surfline live cam -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+<script>
+  // -- Init live cam --
+  (function() {
+    const video = document.getElementById('live-cam');
+    const src   = 'https://hls.cdn-surfline.com/oregon/wc-mavericksov/playlist.m3u8';
+    if (Hls.isSupported()) {
+      const hls = new Hls({ maxBufferLength: 10, maxMaxBufferLength: 30 });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari native HLS
+      video.src = src;
+      video.addEventListener('loadedmetadata', () => video.play().catch(() => {}));
+    }
+  })();
+
+  let nextRefreshSec = 300;
+  let countdownInterval;
+
+  // -- Main load --
+  async function loadData() {
+    try {
+      const resp = await fetch('/api/data');
+      const data = await resp.json();
+      renderWave(data.wave);
+      renderWind(data.wind);
+      renderTide(data.tide);
+      renderForecast(data.forecast);
+      updateHeader(data);
+    } catch (e) {
+      console.error('Failed to load data', e);
+    }
+  }
+
+  // -- Wave --
+  function renderWave(wave) {
+    if (!wave.data || wave.data.length === 0) {
+      document.getElementById('wave-table-wrap').innerHTML =
+        `<div class="error-msg">${wave.error ? '⚠ ' + wave.error : 'No data'}</div>`;
+      return;
+    }
+    const latest = wave.data.find(r => r.wvht_ft !== null) || wave.data[0];
+    const wvhtFt = latest.wvht_ft;
+    const wvhtEl = document.getElementById('cur-wvht');
+    wvhtEl.innerHTML = `${wvhtFt ?? '—'}<span class="stat-unit">ft</span>`;
+    wvhtEl.className = `stat-value ${wvhtFt >= 8 ? 'rough' : wvhtFt >= 4 ? 'fair' : 'good'}`;
+    document.getElementById('cur-wvht-m').textContent  = latest.wvht_m ? `${latest.wvht_m} m` : '—';
+    document.getElementById('cur-dpd').innerHTML       = `${latest.dpd_s ?? '—'}<span class="stat-unit">s</span>`;
+    document.getElementById('cur-apd').textContent     = latest.apd_s ? `avg: ${latest.apd_s} s` : '—';
+    document.getElementById('cur-mwd').innerHTML       = `${latest.mwd_deg ?? '—'}<span class="stat-unit">°</span>`;
+    document.getElementById('cur-mwd-card').textContent = degToCard(latest.mwd_deg);
+
+    document.getElementById('wave-table-wrap').innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Time (PST)</th><th>Ht (ft)</th><th>Period (s)</th><th>Dir</th></tr></thead>
+        <tbody>${wave.data.map(r => `
+          <tr>
+            <td>${r.time_pst}</td>
+            <td class="${htClass(r.wvht_ft)}">${r.wvht_ft ?? '—'}</td>
+            <td>${r.dpd_s ?? '—'}</td>
+            <td>${r.mwd_deg ?? '—'}° ${degToCard(r.mwd_deg)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function htClass(ft) {
+    if (ft == null) return '';
+    return ft >= 8 ? 'val-hi' : ft >= 4 ? 'val-med' : 'val-lo';
+  }
+
+  // -- Wind --
+  function renderWind(wind) {
+    if (!wind.data || wind.data.length === 0) {
+      document.getElementById('wind-table-wrap').innerHTML =
+        `<div class="error-msg">${wind.error ? '⚠ ' + wind.error : 'No data'}</div>`;
+      return;
+    }
+    const latest = wind.data[0];
+    document.getElementById('cur-wspd').innerHTML      = `${latest.wind_speed_kt ?? '—'}<span class="stat-unit">kt</span>`;
+    document.getElementById('cur-wspd-mph').textContent = latest.wind_speed_mph ? `${latest.wind_speed_mph} mph` : '—';
+    document.getElementById('cur-wdir').innerHTML      = `${latest.wind_dir_deg ?? '—'}<span class="stat-unit">°</span>`;
+    document.getElementById('cur-wdir-card').textContent = latest.wind_dir_card ?? '—';
+    document.getElementById('cur-wgst').innerHTML      = `${latest.wind_gust_kt ?? '—'}<span class="stat-unit">kt</span>`;
+    document.getElementById('cur-wgst-mph').textContent = latest.wind_gust_mph ? `${latest.wind_gust_mph} mph` : '—';
+
+    document.getElementById('wind-table-wrap').innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Time (PST)</th><th>Dir</th><th>Speed (kt)</th><th>Gust (kt)</th></tr></thead>
+        <tbody>${wind.data.map(r => `
+          <tr>
+            <td>${r.time_pst}</td>
+            <td>${r.wind_dir_card} ${r.wind_dir_deg ?? '—'}°</td>
+            <td class="${windClass(r.wind_speed_kt)}">${r.wind_speed_kt ?? '—'}</td>
+            <td>${r.wind_gust_kt ?? '—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function windClass(kt) {
+    if (kt == null) return '';
+    return kt >= 25 ? 'val-hi' : kt >= 15 ? 'val-med' : 'val-lo';
+  }
+
+  // -- Tide --
+  function renderTide(tide) {
+    if (!tide || (!tide.predictions.length && !tide.current)) {
+      document.getElementById('tide-stats').innerHTML =
+        `<div class="error-msg">${tide?.error ? '⚠ ' + tide.error : 'No tide data'}</div>`;
+      return;
+    }
+
+    const preds = tide.predictions;
+    const now = new Date();
+
+    // Parse prediction times
+    const parsed = preds.map(p => ({
+      ...p,
+      date: new Date(p.time),
+      height: parseFloat(p.height)
+    }));
+
+    // Cosine interpolation between hi/lo points
+    function tideHeightAt(ms) {
+      const sorted = [...parsed].sort((a, b) => a.date - b.date);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const a = sorted[i], b = sorted[i + 1];
+        if (ms >= a.date && ms <= b.date) {
+          const t = (ms - a.date) / (b.date - a.date);
+          const cos = (1 - Math.cos(t * Math.PI)) / 2;
+          return a.height + (b.height - a.height) * cos;
+        }
+      }
+      return null;
+    }
+
+    // Use backend current if available, otherwise interpolate client-side
+    let currentH = tide.current;
+    if (currentH === null || currentH === undefined) {
+      const interpolated = tideHeightAt(now.getTime());
+      if (interpolated !== null) {
+        currentH = Math.round(interpolated * 100) / 100;
+      }
+    }
+
+    // -- Draw sine wave chart --
+    const canvas = document.getElementById('tide-canvas');
+    const dpr    = window.devicePixelRatio || 1;
+    const W      = canvas.offsetWidth;
+    const H      = 160;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const windowStart = new Date(now.getTime() - 6 * 3600000);
+    const windowEnd   = new Date(now.getTime() + 18 * 3600000);
+    const totalMs     = windowEnd - windowStart;
+
+    const allHeights = parsed.map(p => p.height);
+    const minH = Math.min(...allHeights) - 0.5;
+    const maxH = Math.max(...allHeights) + 0.5;
+    const rangeH = maxH - minH;
+
+    function xPos(date) { return ((date - windowStart) / totalMs) * W; }
+    function yPos(h)    { return H - 12 - ((h - minH) / rangeH) * (H - 28); }
+
+    // Draw filled wave area
+    const steps = 200;
+    const gradient = ctx.createLinearGradient(0, 0, 0, H);
+    gradient.addColorStop(0, 'rgba(14,116,144,0.5)');
+    gradient.addColorStop(1, 'rgba(14,116,144,0.05)');
+
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const t   = i / steps;
+      const ms  = windowStart.getTime() + t * totalMs;
+      const h   = tideHeightAt(ms);
+      if (h === null) continue;
+      const x = t * W, y = yPos(h);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Draw curve line
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const t  = i / steps;
+      const ms = windowStart.getTime() + t * totalMs;
+      const h  = tideHeightAt(ms);
+      if (h === null) continue;
+      const x = t * W, y = yPos(h);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#0e7490';
+    ctx.lineWidth   = 2.5;
+    ctx.stroke();
+
+    // Hi/Lo labels
+    ctx.font = `bold 11px 'DM Mono', monospace`;
+    parsed.forEach(p => {
+      if (p.date < windowStart || p.date > windowEnd) return;
+      const x = xPos(p.date);
+      const y = yPos(p.height);
+      const isHigh = p.type === 'H';
+
+      ctx.fillStyle = isHigh ? '#4ade80' : '#f97316';
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      const label = `${isHigh ? '▲' : '▼'} ${p.height.toFixed(1)}ft`;
+      const timeLabel = formatTime12(p.date);
+      const labelY = isHigh ? y - 14 : y + 22;
+      ctx.fillText(label, x, labelY);
+      ctx.font = `10px 'DM Mono', monospace`;
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText(timeLabel, x, isHigh ? labelY - 13 : labelY + 12);
+      ctx.font = `bold 11px 'DM Mono', monospace`;
+    });
+
+    // NOW line
+    const nowX = xPos(now);
+    if (nowX > 0 && nowX < W) {
+      ctx.beginPath();
+      ctx.moveTo(nowX, 0);
+      ctx.lineTo(nowX, H);
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Current height dot on the NOW line
+      if (currentH !== null) {
+        const nowY = yPos(currentH);
+        ctx.beginPath();
+        ctx.arc(nowX, nowY, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(nowX, nowY, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#0e7490';
+        ctx.fill();
+      }
+
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font      = '10px DM Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('NOW', nowX, H - 2);
+    }
+
+    // -- Tide stats below chart --
+    const upcoming = parsed.filter(p => p.date > now).slice(0, 4);
+    const nextHigh = upcoming.find(p => p.type === 'H');
+    const nextLow  = upcoming.find(p => p.type === 'L');
+
+    // Trend from interpolation
+    const nowMs    = now.getTime();
+    const prevH    = tideHeightAt(nowMs - 600000);
+    const curH2    = tideHeightAt(nowMs);
+    const trend    = (curH2 !== null && prevH !== null)
+                     ? (curH2 > prevH ? '↑ Rising' : '↓ Falling') : '—';
+    const trendCol = trend.includes('Rising') ? '#4ade80' : '#f97316';
+
+    const statsHTML = `
+      <div class="tide-stat">
+        <div class="tide-stat-label">Current</div>
+        <div class="tide-stat-value">${currentH !== null ? currentH.toFixed(1) : '—'}<span style="font-size:0.8rem;font-family:'DM Mono',monospace"> ft</span></div>
+        <div class="tide-stat-sub" style="color:${trendCol}">${trend}</div>
+      </div>
+      ${nextHigh ? `
+      <div class="tide-stat">
+        <div class="tide-stat-label">Next High</div>
+        <div class="tide-stat-value" style="color:#4ade80">${nextHigh.height.toFixed(1)}<span style="font-size:0.8rem;font-family:'DM Mono',monospace"> ft</span></div>
+        <div class="tide-stat-sub">${formatTime12(nextHigh.date)}</div>
+      </div>` : ''}
+      ${nextLow ? `
+      <div class="tide-stat">
+        <div class="tide-stat-label">Next Low</div>
+        <div class="tide-stat-value" style="color:#f97316">${nextLow.height.toFixed(1)}<span style="font-size:0.8rem;font-family:'DM Mono',monospace"> ft</span></div>
+        <div class="tide-stat-sub">${formatTime12(nextLow.date)}</div>
+      </div>` : ''}
+      ${upcoming[2] ? `
+      <div class="tide-stat">
+        <div class="tide-stat-label">${upcoming[2].type === 'H' ? 'High' : 'Low'} After</div>
+        <div class="tide-stat-value" style="color:${upcoming[2].type === 'H' ? '#4ade80' : '#f97316'}">${upcoming[2].height.toFixed(1)}<span style="font-size:0.8rem;font-family:'DM Mono',monospace"> ft</span></div>
+        <div class="tide-stat-sub">${formatTime12(upcoming[2].date)}</div>
+      </div>` : ''}
+    `;
+    document.getElementById('tide-stats').innerHTML = statsHTML;
+  }
+
+  function formatTime12(date) {
+    return date.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: true});
+  }
+
+  // -- Forecast --
+  function renderForecast(forecast) {
+    const tbody = document.getElementById('forecast-tbody');
+    if (!forecast || !forecast.rows || forecast.rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="error-msg">${forecast?.error ? '⚠ ' + forecast.error : 'No forecast data'}</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = forecast.rows.map(r => `
+      <tr>
+        <td style="text-align:left;font-weight:500;color:#ffffff;white-space:nowrap;">${r.day}</td>
+        <td style="text-align:left;font-weight:500;color:${trendColor(r.trend)}">${r.trend}</td>
+        <td style="text-align:left;color:#ffffff;">${r.wind}</td>
+        <td style="text-align:left;color:#ffffff;font-size:0.78rem;">${r.details}</td>
+        <td style="text-align:left;color:#ffffff;white-space:nowrap;">${r.waves}</td>
+        <td style="text-align:left;color:#ffffff;">${r.direction}</td>
+      </tr>`).join('');
+    if (forecast.updated) {
+      const d = new Date(forecast.updated);
+      document.getElementById('forecast-badge').textContent =
+        'UPDATED ' + d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    }
+  }
+
+  function trendColor(trend) {
+    if (!trend) return '#ffffff';
+    const t = trend.toLowerCase();
+    if (t.includes('up'))   return '#4ade80';
+    if (t.includes('down')) return '#f97316';
+    return '#f59e0b';
+  }
+
+  // -- Header --
+  function updateHeader(data) {
+    const times = [data.wave.updated, data.wind.updated].filter(Boolean).map(t => new Date(t));
+    if (times.length) {
+      const latest = new Date(Math.max(...times));
+      document.getElementById('last-updated').textContent =
+        latest.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+    }
+    const dot = document.getElementById('status-dot');
+    dot.className = 'status-dot' + ((data.wave.error || data.wind.error) ? ' error' : '');
+
+    nextRefreshSec = 300;
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+      nextRefreshSec--;
+      const m = Math.floor(nextRefreshSec / 60);
+      const s = String(nextRefreshSec % 60).padStart(2, '0');
+      document.getElementById('next-refresh').textContent = `${m}:${s}`;
+      if (nextRefreshSec <= 0) { clearInterval(countdownInterval); loadData(); }
+    }, 1000);
+  }
+
+  // -- Manual refresh --
+  async function manualRefresh() {
+    const btn = document.getElementById('refresh-btn');
+    btn.classList.add('spinning'); btn.disabled = true;
+    try {
+      await fetch('/api/refresh', {method:'POST'});
+      await loadData();
+    } finally {
+      btn.classList.remove('spinning'); btn.disabled = false;
+    }
+  }
+
+  // -- Helpers --
+  function degToCard(deg) {
+    if (deg == null) return '—';
+    const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    return dirs[Math.round(deg / 22.5) % 16];
+  }
+
+  // -- Init --
+  loadData();
+  setInterval(loadData, 6 * 60 * 1000);
+
+  // Redraw tide chart on resize
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      fetch('/api/data').then(r => r.json()).then(d => renderTide(d.tide));
+    }, 300);
+  });
+</script>
+</body>
+</html>
