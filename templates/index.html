@@ -218,7 +218,7 @@
       background: #000;
       border-radius: 0 0 8px 8px;
     }
-    .video-wrap video {
+    .video-wrap video, .video-wrap img {
       position: absolute; top: 0; left: 0;
       width: 100%; height: 100%;
       object-fit: cover;
@@ -368,14 +368,16 @@
     <div class="panel">
       <div class="panel-header">
         <span class="panel-title">Live Cam – Mavericks</span>
-        <span class="panel-badge">SURFLINE</span>
+        <span class="panel-badge" id="cam-badge">SURFLINE · STILL</span>
       </div>
       <div class="video-wrap">
-        <video id="live-cam" muted playsinline autoplay></video>
+        <a href="https://www.surfline.com/surf-report/maverick-s/5842041f4e65fad6a7708801" target="_blank" rel="noopener">
+          <img id="live-cam" alt="Mavericks live cam still" src="https://camstills.cdn-surfline.com/us-west-2/wc-mavericksov/latest_full.jpg" />
+        </a>
       </div>
       <div class="video-label">
-        <a href="https://www.surfline.com/surf-report/mavericks/5842041f4e65fad6a7708a65" target="_blank">
-          ↗ View on Surfline
+        <a href="https://www.surfline.com/surf-report/maverick-s/5842041f4e65fad6a7708801" target="_blank">
+          ↗ Tap for live video on Surfline
         </a>
       </div>
     </div>
@@ -423,23 +425,18 @@
 
 </div>
 
-<!-- HLS.js for Surfline live cam -->
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 <script>
-  // -- Init live cam --
+  // -- Live cam still --
+  // Surfline's HLS stream now only plays from surfline.com (403 elsewhere),
+  // so show the cam's latest still and refresh it every 60s.
   (function() {
-    const video = document.getElementById('live-cam');
-    const src   = 'https://hls.cdn-surfline.com/oregon/wc-mavericksov/playlist.m3u8';
-    if (Hls.isSupported()) {
-      const hls = new Hls({ maxBufferLength: 10, maxMaxBufferLength: 30 });
-      hls.loadSource(src);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS
-      video.src = src;
-      video.addEventListener('loadedmetadata', () => video.play().catch(() => {}));
-    }
+    const img  = document.getElementById('live-cam');
+    const base = 'https://camstills.cdn-surfline.com/us-west-2/wc-mavericksov/latest_full.jpg';
+    const refresh = () => { img.src = base + '?t=' + Date.now(); };
+    img.addEventListener('error', () => {
+      document.getElementById('cam-badge').textContent = 'CAM OFFLINE';
+    });
+    setInterval(refresh, 60 * 1000);
   })();
 
   let nextRefreshSec = 300;
