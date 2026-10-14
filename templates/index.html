@@ -368,16 +368,18 @@
     <div class="panel">
       <div class="panel-header">
         <span class="panel-title">Live Cam – Mavericks</span>
-        <span class="panel-badge" id="cam-badge">SURFLINE · STILL</span>
+        <span class="panel-badge" id="cam-badge">SURFLINE · CONNECTING</span>
       </div>
       <div class="video-wrap">
-        <a href="https://www.surfline.com/surf-report/maverick-s/5842041f4e65fad6a7708801" target="_blank" rel="noopener">
-          <img id="live-cam" alt="Mavericks live cam still" src="https://camstills.cdn-surfline.com/us-west-2/wc-mavericksov/latest_full.jpg" />
+        <video id="live-cam" muted playsinline autoplay controls
+               poster="https://camstills.cdn-surfline.com/us-west-2/wc-mavericksov/latest_full.jpg"></video>
+        <a id="cam-still-link" href="https://www.surfline.com/surf-report/maverick-s/5842041f4e65fad6a7708801" target="_blank" rel="noopener" hidden>
+          <img id="cam-still" alt="Mavericks live cam still" />
         </a>
       </div>
       <div class="video-label">
-        <a href="https://www.surfline.com/surf-report/maverick-s/5842041f4e65fad6a7708801" target="_blank">
-          ↗ Tap for live video on Surfline
+        <a href="https://www.surfline.com/surf-report/maverick-s/5842041f4e65fad6a7708801" target="_blank" rel="noopener">
+          ↗ Open Mavericks on Surfline
         </a>
       </div>
     </div>
@@ -425,18 +427,56 @@
 
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js"></script>
 <script>
-  // -- Live cam still --
-  // Surfline's HLS stream now only plays from surfline.com (403 elsewhere),
-  // so show the cam's latest still and refresh it every 60s.
+  // -- Live cam --
+  // /cam/mavericks.m3u8 relays Surfline's playlist (it 403s off-site); the video
+  // segments load straight from Surfline's CDN. If the stream can't play, fall
+  // back to the cam's latest still, refreshed every 60s.
   (function() {
-    const img  = document.getElementById('live-cam');
-    const base = 'https://camstills.cdn-surfline.com/us-west-2/wc-mavericksov/latest_full.jpg';
-    const refresh = () => { img.src = base + '?t=' + Date.now(); };
-    img.addEventListener('error', () => {
-      document.getElementById('cam-badge').textContent = 'CAM OFFLINE';
-    });
-    setInterval(refresh, 60 * 1000);
+    const video = document.getElementById('live-cam');
+    const badge = document.getElementById('cam-badge');
+    const src   = '/cam/mavericks.m3u8';
+    const still = 'https://camstills.cdn-surfline.com/us-west-2/wc-mavericksov/latest_full.jpg';
+    let fellBack = false;
+
+    function showStill() {
+      if (fellBack) return;
+      fellBack = true;
+      video.remove();
+      const link = document.getElementById('cam-still-link');
+      const img  = document.getElementById('cam-still');
+      const refresh = () => { img.src = still + '?t=' + Date.now(); };
+      img.addEventListener('error', () => { badge.textContent = 'CAM OFFLINE'; });
+      link.hidden = false;
+      badge.textContent = 'SURFLINE · STILL';
+      refresh();
+      setInterval(refresh, 60 * 1000);
+    }
+
+    video.addEventListener('playing', () => { badge.textContent = 'SURFLINE · LIVE'; });
+
+    if (window.Hls && Hls.isSupported()) {
+      const hls = new Hls({ liveSyncDurationCount: 2, maxBufferLength: 20 });
+      let retries = 0;
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && retries++ < 2) {
+          hls.recoverMediaError();
+        } else {
+          hls.destroy();
+          showStill();
+        }
+      });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // iPhone/iPad Safari plays HLS natively
+      video.src = src;
+      video.addEventListener('error', showStill);
+    } else {
+      showStill();
+    }
   })();
 
   let nextRefreshSec = 300;

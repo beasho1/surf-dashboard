@@ -9,7 +9,9 @@ import re
 import math
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from flask import Flask, jsonify, render_template
+import time
+from urllib.parse import urljoin
+from flask import Flask, Response, jsonify, render_template
 from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 
@@ -28,6 +30,9 @@ cache = {
     "forecast": {"rows": [], "updated": None, "error": None, "url": None},
 }
 
+CAM_PLAYLIST   = "https://hls.cdn-surfline.com/oregon/wc-mavericksov/playlist.m3u8"
+CAM_HEADERS    = {"Referer": "https://www.surfline.com/",
+                  "User-Agent": "Mozilla/5.0 (HMB Surf Dashboard)"}
 BUOY_URL       = "https://www.ndbc.noaa.gov/data/realtime2/46026.txt"
 KHAF_URL       = "https://forecast.weather.gov/data/obhistory/KHAF.html"
 TIDE_STATION   = "9414131"
@@ -348,6 +353,31 @@ def api_data():
 def manual_refresh():
     run_all()
     return jsonify({"status": "ok", "time": datetime.now(timezone.utc).isoformat()})
+
+# Surfline only serves the Mavericks playlist to a surfline.com Referer, so we
+# relay just the playlist (a few hundred bytes) and point its segment lines at
+# Surfline's CDN. The .ts video segments are open + CORS *, so viewers pull
+# them straight from Surfline and Render carries almost no video traffic.
+cam_cache = {"body": None, "fetched": 0.0}
+
+@app.route("/cam/mavericks.m3u8")
+def cam_playlist():
+    if time.time() - cam_cache["fetched"] > 4:
+        try:
+            resp = requests.get(CAM_PLAYLIST, headers=CAM_HEADERS, timeout=8)
+            resp.raise_for_status()
+            lines = [
+                ln if not ln.strip() or ln.startswith("#") else urljoin(CAM_PLAYLIST, ln.strip())
+                for ln in resp.text.splitlines()
+            ]
+            cam_cache["body"] = "\n".join(lines) + "\n"
+            cam_cache["fetched"] = time.time()
+        except Exception as e:
+            logger.warning(f"Cam playlist fetch failed: {e}")
+            return Response("cam unavailable\n", status=502, mimetype="text/plain",
+                            headers={"Cache-Control": "no-store"})
+    return Response(cam_cache["body"], mimetype="application/vnd.apple.mpegurl",
+                    headers={"Cache-Control": "no-store"})
 
 
 # Run all fetches once at startup
